@@ -1,6 +1,46 @@
 [package]
 name = "apt-lists"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
+rust-version = "1.85"
+description = "Read-only, repository-aware companion to apt list"
+license = "GPL-3.0-or-later"
+repository = "https://git.ak1ra.xyz/ak1ra-lab/apt-lists"
+keywords = ["apt", "debian", "dpkg", "packages", "cli"]
+categories = ["command-line-utilities", "os"]
 
 [dependencies]
+oma-apt = "0.13.0"
+clap = { version = "4", features = ["derive"] }
+clap_complete = "4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints.rust]
+# `apt-lists` is a read-only query tool: all libapt interaction goes through
+# the safe `oma-apt` wrappers, so the crate itself contains no unsafe code.
+# This is a hard `deny` (not `forbid`) only because the test fixture needs
+# one sanctioned `unsafe { env::set_var }` call, see tests/fixture.rs.
+unsafe_code = "deny"
+missing_docs = "warn"
+rust_2024_compatibility = { level = "warn", priority = -1 }
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+cargo = { level = "warn", priority = -1 }
+# Allowed pedantic lints: keeping these would not make the code safer or
+# clearer for a small CLI like this one.
+module_name_repetitions = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+doc_markdown = "allow"
+# `syn` is pulled in twice by upstream crates; not actionable here.
+multiple_crate_versions = "allow"
+
+[profile.release]
+lto = true
+strip = true

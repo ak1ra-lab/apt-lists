@@ -1,0 +1,32 @@
+# CI for Forgejo / Gitea Actions (GitHub Actions compatible syntax).
+#
+# Enforces the repository's code-style and safety gates:
+#   * rustfmt (no diff allowed)
+#   * clippy with the [lints] configured in Cargo.toml, warnings as errors
+#   * the full test suite (isolated APT fixtures, no host state touched)
+
+name: ci
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: docker
+    container:
+      image: rust:1-trixie
+    steps:
+      - name: Install apt build dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends libapt-pkg-dev
+      - name: Check out sources
+        uses: actions/checkout@v7
+      - name: rustfmt
+        run: cargo fmt --check
+      - name: clippy
+        run: cargo clippy --all-targets -- -D warnings
+      - name: tests
+        run: cargo test
