@@ -13,12 +13,19 @@
 //! never updated (`Cache::update()` is not called), no packages are marked,
 //! resolved or installed, and no APT/dpkg state is modified.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use oma_apt::cache::{Cache, PackageSort};
 
 use crate::error::AptListsError;
-use crate::repository::RepoIndex;
+use crate::repository::{normalize_uri, RepoIndex};
+
+/// Distinct package names per (repository base URI, suite/archive).
+///
+/// `Architecture: all` packages appear in every architecture index of their
+/// suite but are counted once per suite; look the counts up with
+/// [`suite_package_count`].
+pub type PackageCounts = BTreeMap<(String, Option<String>), usize>;
 
 /// A single available (or installed) version of a package.
 #[derive(Debug, Clone)]
@@ -71,6 +78,19 @@ pub struct CacheScan {
     pub indexes: BTreeMap<usize, RepoIndex>,
     /// All package records that have at least one version.
     pub packages: Vec<ScannedPackage>,
+    /// Distinct package names provided per (repository base URI, suite),
+    /// see [`PackageCounts`].
+    pub package_counts: PackageCounts,
+}
+
+impl CacheScan {
+    /// Distinct package names provided by the suite `archive` of the
+    /// repository with base URI `uri` (raw spelling; normalized internally).
+    /// Unknown suites yield 0.
+    #[must_use]
+    pub fn suite_package_count(&self, uri: &str, archive: Option<&str>) -> usize {
+        suite_package_count(&self.package_counts, uri, archive)
+    }
 }
 
 impl CacheScan {
@@ -118,12 +138,23 @@ pub fn open_cache() -> Result<Cache, AptListsError> {
     oma_apt::new_cache!().map_err(|e| AptListsError::CacheInit(e.to_string()))
 }
 
+/// Look up the distinct package-name count for the suite `archive` of the
+/// repository with base URI `uri`. Unknown suites yield 0.
+#[must_use]
+pub fn suite_package_count(counts: &PackageCounts, uri: &str, archive: Option<&str>) -> usize {
+    counts
+        .get(&(normalize_uri(uri), archive.map(str::to_string)))
+        .copied()
+        .unwrap_or(0)
+}
+
 /// Walk the whole cache once and collect, in memory:
 ///
 /// 1. the repository catalog (every downloadable `PackageFile`),
 /// 2. every package version with the ids of the repositories providing it,
 /// 3. which of those versions is the installed one, and whether the package
-///    is marked auto-installed.
+///    is marked auto-installed,
+/// 4. the number of distinct package names provided per repository suite.
 ///
 /// No external processes are spawned and no APT files are read manually.
 pub fn scan(cache: &Cache) -> CacheScan {
@@ -178,5 +209,32 @@ pub fn scan(cache: &Cache) -> CacheScan {
         });
     }
 
-    CacheScan { indexes, packages }
+    // Count the distinct package names per (repository base URI, suite):
+    // `Architecture: all` packages are listed in every architecture index of
+    // their suite and must be counted once, so names are deduplicated per
+    // (uri, suite) key, not per index id. Package records are sorted by name
+    // (`PackageSort::names()`), so records with equal names are adjacent and
+    // can be grouped with `chunk_by`.
+    let mut package_counts: PackageCounts = BTreeMap::new();
+    for group in packages.chunk_by(|a, b| a.name == b.name) {
+        let mut keys: BTreeSet<(String, Option<String>)> = BTreeSet::new();
+        for pkg in group {
+            for ver in &pkg.versions {
+                for id in &ver.index_ids {
+                    if let Some(idx) = indexes.get(id) {
+                        keys.insert((normalize_uri(&idx.uri), idx.archive.clone()));
+                    }
+                }
+            }
+        }
+        for key in keys {
+            *package_counts.entry(key).or_default() += 1;
+        }
+    }
+
+    CacheScan {
+        indexes,
+        packages,
+        package_counts,
+    }
 }

@@ -60,9 +60,12 @@ fn run(args: &Args) -> Result<(), AptListsError> {
                 return Err(AptListsError::NoPackageIndexes);
             }
             if args.json {
-                write_stdout(&json::to_pretty(&json::repos(&catalog)))?;
+                write_stdout(&json::to_pretty(&json::repos(
+                    &catalog,
+                    &scan.package_counts,
+                )))?;
             } else {
-                write_stdout(&human::repos(&catalog))?;
+                write_stdout(&human::repos(&catalog, &scan.package_counts))?;
             }
         }
         Mode::Installed => {

@@ -86,13 +86,18 @@ pub fn installed(rows: &[crate::query::VersionRow]) -> String {
 }
 
 /// Format the repository catalog (`--repos`): one row per repository and
-/// suite, with the components and index architectures served for that suite.
-/// SITE is omitted because it is the host part of the REPOSITORY URI, and
-/// ORIGIN/LABEL are Release-file metadata not related to the host; both stay
-/// available through `--json`.
+/// suite, with the components and index architectures served for that suite
+/// and the number of distinct package names the suite provides (an
+/// `Architecture: all` package listed in several architecture indexes of one
+/// suite counts once). SITE is omitted because it is the host part of the
+/// REPOSITORY URI, and ORIGIN/LABEL are Release-file metadata not related to
+/// the host; both stay available through `--json`.
 #[must_use]
-pub fn repos(catalog: &crate::repository::RepoCatalog) -> String {
-    let headers = ["REPOSITORY", "SUITE", "COMPONENTS", "ARCHS"];
+pub fn repos(
+    catalog: &crate::repository::RepoCatalog,
+    counts: &crate::apt::PackageCounts,
+) -> String {
+    let headers = ["REPOSITORY", "SUITE", "COMPONENTS", "ARCHS", "PACKAGES"];
     let mut body: Vec<Vec<String>> = Vec::new();
 
     for repo in catalog.repositories() {
@@ -104,6 +109,7 @@ pub fn repos(catalog: &crate::repository::RepoCatalog) -> String {
                 "-".to_string(),
                 join_or_dash(&distinct_over(repo.indexes.iter(), |i| i.component.clone())),
                 join_or_dash(&distinct_over(repo.indexes.iter(), |i| i.arch.clone())),
+                crate::apt::suite_package_count(counts, &repo.uri, None).to_string(),
             ]);
             continue;
         }
@@ -116,11 +122,13 @@ pub fn repos(catalog: &crate::repository::RepoCatalog) -> String {
             let archs = distinct_over(repo.indexes.iter().filter(|i| in_suite(i)), |i| {
                 i.arch.clone()
             });
+            let packages = crate::apt::suite_package_count(counts, &repo.uri, Some(&suite));
             body.push(vec![
                 repo.uri.clone(),
                 suite,
                 join_or_dash(&components),
                 join_or_dash(&archs),
+                packages.to_string(),
             ]);
         }
     }

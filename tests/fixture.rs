@@ -665,7 +665,7 @@ fn json_output_shapes() {
     assert_eq!(updonly["repositories"][0]["uri"], format!("{UPDATES}/"));
 
     // --repos --json
-    let value = apt_lists::output::json::repos(&catalog);
+    let value = apt_lists::output::json::repos(&catalog, &scan.package_counts);
     let repos = value["repositories"].as_array().unwrap();
     assert_eq!(repos.len(), 4);
     let security = repos
@@ -674,6 +674,7 @@ fn json_output_shapes() {
         .unwrap();
     assert_eq!(security["suites"].as_array().unwrap().len(), 1);
     assert_eq!(security["suites"][0]["archive"], "trixie-security");
+    assert_eq!(security["suites"][0]["packages"], 2);
     assert_eq!(
         security["suites"][0]["architectures"]
             .as_array()
@@ -683,6 +684,23 @@ fn json_output_shapes() {
             .collect::<Vec<_>>(),
         vec!["amd64"]
     );
+}
+
+#[test]
+fn suite_package_counts_count_names_once_per_suite() {
+    let (scan, _catalog) = scan();
+    let count = |uri: &str, suite: &str| {
+        apt_lists::apt::suite_package_count(&scan.package_counts, uri, Some(suite))
+    };
+
+    // The archive serves foo in amd64 and i386 plus all-arch packages in
+    // both indexes: names are counted once per suite.
+    assert_eq!(count(DEBIAN, "trixie"), 5);
+    assert_eq!(count(MIRROR, "trixie"), 3);
+    assert_eq!(count(UPDATES, "trixie-updates"), 2);
+    assert_eq!(count(SECURITY, "trixie-security"), 2);
+    assert_eq!(count(DEBIAN, "no-such-suite"), 0);
+    assert_eq!(scan.suite_package_count(DEBIAN, Some("trixie")), 5);
 }
 
 // ---------------------------------------------------------------------------
@@ -818,26 +836,33 @@ fn cli_repos_human_output_is_compact() {
         "header + one row per repository suite:\n{stdout}"
     );
     let header = stdout.lines().next().unwrap();
-    for col in ["REPOSITORY", "SUITE", "COMPONENTS", "ARCHS"] {
+    for col in ["REPOSITORY", "SUITE", "COMPONENTS", "ARCHS", "PACKAGES"] {
         assert!(header.contains(col), "header: {header}");
     }
     assert!(!header.contains("SITE"), "header: {header}");
     assert!(!header.contains("ORIGIN"), "header: {header}");
     assert!(!header.contains("LABEL"), "header: {header}");
 
-    // The REPOSITORY column keeps the full URI, copy-pasteable for --repo.
-    let first_cells: Vec<String> = stdout
+    // The REPOSITORY column keeps the full URI, copy-pasteable for --repo;
+    // the PACKAGES column counts distinct package names per suite (the
+    // archive serves foo in amd64 and i386, counted once).
+    let rows: Vec<(String, String)> = stdout
         .lines()
         .skip(1)
-        .map(|l| l.split("  ").next().unwrap_or_default().to_string())
+        .map(|l| {
+            (
+                l.split("  ").next().unwrap_or_default().to_string(),
+                l.rsplit(' ').next().unwrap_or_default().to_string(),
+            )
+        })
         .collect();
     assert_eq!(
-        first_cells,
+        rows,
         vec![
-            format!("{SECURITY}/"),
-            format!("{UPDATES}/"),
-            format!("{DEBIAN}/"),
-            format!("{MIRROR}/"),
+            (format!("{SECURITY}/"), "2".to_string()),
+            (format!("{UPDATES}/"), "2".to_string()),
+            (format!("{DEBIAN}/"), "5".to_string()),
+            (format!("{MIRROR}/"), "3".to_string()),
         ]
     );
     for (suite, archs) in [

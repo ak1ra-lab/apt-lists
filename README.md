@@ -122,7 +122,7 @@ outcomes are distinguishable:
 ```console
 apt-lists --installed                          # all installed packages + providers
 apt-lists --installed --repo <REPOSITORY>      # installed from one repository
-apt-lists --repos                              # repositories known to the cache
+apt-lists --repos                              # repositories known to the cache (+ package counts)
 apt-lists <package>                            # all versions of a package + repositories
 apt-lists <package>:<arch>                     # e.g. apt-lists foo:i386
 apt-lists --all                                # all available package versions (default)
@@ -197,10 +197,11 @@ $ apt-lists --installed --repo https://deb.debian.org/debian-security/ --json
 
 Single-package queries (`apt-lists foo --json`) use the same `packages`
 envelope as every other mode. With `--repos --json`, the per-suite detail
-(suites with codename, components, architectures) and the Release metadata
-(`origin`, `label`, per-index `index_filename`/`index_type`) are reported in
-full. No canonical URI reconstruction is promised: the values are the raw
-ones libapt-pkg exposes.
+(suites with codename, components, architectures and the number of distinct
+package names as `packages`) and the Release metadata (`origin`, `label`,
+per-index `index_filename`/`index_type`) are reported in full. No canonical
+URI reconstruction is promised: the values are the raw ones libapt-pkg
+exposes.
 
 ## Requirements
 

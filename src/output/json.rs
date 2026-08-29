@@ -6,6 +6,7 @@
 
 use serde::Serialize;
 
+use crate::apt::PackageCounts;
 use crate::query::VersionRow;
 use crate::repository::{RepoCatalog, RepoIndex, Repository};
 
@@ -112,19 +113,24 @@ pub fn versions(rows: &[VersionRow]) -> serde_json::Value {
 pub fn for_repo(repository: &Repository, rows: &[VersionRow]) -> serde_json::Value {
     let packages: Vec<JsonVersion> = rows.iter().map(|r| json_version(r, false)).collect();
     serde_json::json!({
-        "repository": repository_json(repository),
+        "repository": repository_json(repository, None),
         "packages": packages,
     })
 }
 
-/// `--repos --json`: repositories grouped by URI, with per-suite detail.
-pub fn repos(catalog: &RepoCatalog) -> serde_json::Value {
-    let repositories: Vec<serde_json::Value> =
-        catalog.repositories().iter().map(repository_json).collect();
+/// `--repos --json`: repositories grouped by URI, with per-suite detail
+/// (including the number of distinct package names per suite).
+#[must_use]
+pub fn repos(catalog: &RepoCatalog, package_counts: &PackageCounts) -> serde_json::Value {
+    let repositories: Vec<serde_json::Value> = catalog
+        .repositories()
+        .iter()
+        .map(|r| repository_json(r, Some(package_counts)))
+        .collect();
     serde_json::json!({ "repositories": repositories })
 }
 
-fn repository_json(repo: &Repository) -> serde_json::Value {
+fn repository_json(repo: &Repository, package_counts: Option<&PackageCounts>) -> serde_json::Value {
     let suites: Vec<serde_json::Value> = repo
         .archives()
         .iter()
@@ -135,12 +141,17 @@ fn repository_json(repo: &Repository) -> serde_json::Value {
                 .filter(|i| i.archive.as_deref() == Some(archive.as_str()))
                 .cloned()
                 .collect();
-            serde_json::json!({
+            let mut suite = serde_json::json!({
                 "archive": archive,
                 "codename": first(&indexes, |i| i.codename.clone()),
                 "components": distinct(&indexes, |i| i.component.clone()),
                 "architectures": distinct(&indexes, |i| i.arch.clone()),
-            })
+            });
+            if let Some(counts) = package_counts {
+                suite["packages"] =
+                    crate::apt::suite_package_count(counts, &repo.uri, Some(archive)).into();
+            }
+            suite
         })
         .collect();
 

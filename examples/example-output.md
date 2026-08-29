@@ -9,6 +9,10 @@ https://deb.debian.org/debian-updates    trixie-updates
 https://deb.debian.org/debian-security   trixie-security
 ```
 
+The `PACKAGES` column of `--repos` counts distinct package names per suite:
+the archive serves `foo` in amd64 and i386 plus `Architecture: all` packages
+in both indexes, and names are counted once.
+
 Installed state:
 
 ```text
@@ -54,11 +58,11 @@ seconly    2.0            all    https://deb.debian.org/debian-security/
 shared     5.0            all    https://deb.debian.org/debian/
 
 $ apt-lists --repos   # (-R also works)
-REPOSITORY                               SUITE            COMPONENTS  ARCHS
-https://deb.debian.org/debian-security/  trixie-security  main        amd64
-https://deb.debian.org/debian-updates/   trixie-updates   main        amd64
-https://deb.debian.org/debian/           trixie           main        amd64, i386
-https://ftp.us.debian.org/debian/        trixie           main        amd64
+REPOSITORY                               SUITE            COMPONENTS  ARCHS        PACKAGES
+https://deb.debian.org/debian-security/  trixie-security  main        amd64        2
+https://deb.debian.org/debian-updates/   trixie-updates   main        amd64        2
+https://deb.debian.org/debian/           trixie           main        amd64, i386  5
+https://ftp.us.debian.org/debian/        trixie           main        amd64        3
 
 $ apt-lists foo
 PACKAGE  VERSION        ARCH   REPOSITORY
