@@ -1,4 +1,10 @@
 //! Human-readable output, kept in the spirit of `apt list`.
+//!
+//! Every package-listing mode renders the same four columns
+//! (PACKAGE/VERSION/ARCH/REPOSITORY); a `--repo` filter narrows the rows,
+//! never the columns. The repository catalog table (`--repos`) is one row
+//! per repository and suite; the wider Release-file metadata (origin, label,
+//! codename, index filenames) is available through `--json`.
 
 /// Render a table with a header row; columns are as wide as their widest
 /// cell. Used instead of a table crate to keep output stable and compact.
@@ -40,23 +46,18 @@ fn row_line<S: AsRef<str>>(cells: &[S], widths: &[usize]) -> String {
     line
 }
 
-/// Join repository URIs for the compact human REPOSITORY column, using the
-/// given display function (raw URI or scheme-stripped).
+/// Join repository URIs for the human REPOSITORY column. The full URI is
+/// kept verbatim so the value can be passed to `--repo` unchanged.
 #[must_use]
-pub fn repo_column(repos: &[crate::repository::RepoIndex], shorten: bool) -> String {
+pub fn repo_column(repos: &[crate::repository::RepoIndex]) -> String {
     if repos.is_empty() {
         return "-".to_string();
     }
 
     let mut uris: Vec<String> = Vec::new();
     for idx in repos {
-        let uri = if shorten {
-            crate::repository::strip_scheme(&idx.uri)
-        } else {
-            idx.uri.clone()
-        };
-        if !uris.contains(&uri) {
-            uris.push(uri);
+        if !uris.contains(&idx.uri) {
+            uris.push(idx.uri.clone());
         }
     }
     uris.join(", ")
@@ -64,65 +65,66 @@ pub fn repo_column(repos: &[crate::repository::RepoIndex], shorten: bool) -> Str
 
 /// Format installed-version rows (`--installed`, optionally `--repo`).
 ///
-/// With a repository filter only PACKAGE/VERSION/ARCH are shown (the
-/// repository is implied by the filter); without a filter an extra
-/// REPOSITORY column lists every repository that provides the exact
-/// installed version.
+/// The REPOSITORY column is always present: without a filter it lists every
+/// repository that provides the exact installed version (`-` when none
+/// does), with a filter it repeats the selected repository.
 #[must_use]
-pub fn installed(rows: &[crate::query::VersionRow], repo_filtered: bool) -> String {
-    if repo_filtered {
-        let headers = ["PACKAGE", "VERSION", "ARCH"];
-        let body: Vec<Vec<String>> = rows
-            .iter()
-            .map(|r| vec![r.name.clone(), r.version.clone(), r.arch.clone()])
-            .collect();
-        table(&headers, &body)
-    } else {
-        let headers = ["PACKAGE", "VERSION", "ARCH", "REPOSITORY"];
-        let body: Vec<Vec<String>> = rows
-            .iter()
-            .map(|r| {
-                vec![
-                    r.name.clone(),
-                    r.version.clone(),
-                    r.arch.clone(),
-                    repo_column(&r.repositories, false),
-                ]
-            })
-            .collect();
-        table(&headers, &body)
-    }
-}
-
-/// Format the repository catalog (`--repos`): one row per repository URI with
-/// its most useful release metadata. SITE is the hostname; ORIGIN/LABEL are
-/// distinct Release-file fields and are not related to the hostname.
-#[must_use]
-pub fn repos(catalog: &crate::repository::RepoCatalog) -> String {
-    let headers = [
-        "REPOSITORY",
-        "SITE",
-        "SUITE",
-        "COMPONENTS",
-        "ARCHS",
-        "ORIGIN",
-        "LABEL",
-    ];
-    let body: Vec<Vec<String>> = catalog
-        .repositories()
+pub fn installed(rows: &[crate::query::VersionRow]) -> String {
+    let headers = ["PACKAGE", "VERSION", "ARCH", "REPOSITORY"];
+    let body: Vec<Vec<String>> = rows
         .iter()
         .map(|r| {
             vec![
-                r.uri.clone(),
-                r.site.clone().unwrap_or_else(|| "-".to_string()),
-                join_or_dash(&r.archives()),
-                join_or_dash(&r.components()),
-                join_or_dash(&r.archs()),
-                join_or_dash(&r.origins()),
-                join_or_dash(&r.labels()),
+                r.name.clone(),
+                r.version.clone(),
+                r.arch.clone(),
+                repo_column(&r.repositories),
             ]
         })
         .collect();
+    table(&headers, &body)
+}
+
+/// Format the repository catalog (`--repos`): one row per repository and
+/// suite, with the components and index architectures served for that suite.
+/// SITE is omitted because it is the host part of the REPOSITORY URI, and
+/// ORIGIN/LABEL are Release-file metadata not related to the host; both stay
+/// available through `--json`.
+#[must_use]
+pub fn repos(catalog: &crate::repository::RepoCatalog) -> String {
+    let headers = ["REPOSITORY", "SUITE", "COMPONENTS", "ARCHS"];
+    let mut body: Vec<Vec<String>> = Vec::new();
+
+    for repo in catalog.repositories() {
+        let suites = repo.archives();
+        if suites.is_empty() {
+            // No suite metadata at all (e.g. a flat repository).
+            body.push(vec![
+                repo.uri.clone(),
+                "-".to_string(),
+                join_or_dash(&distinct_over(repo.indexes.iter(), |i| i.component.clone())),
+                join_or_dash(&distinct_over(repo.indexes.iter(), |i| i.arch.clone())),
+            ]);
+            continue;
+        }
+        for suite in suites {
+            let in_suite =
+                |i: &crate::repository::RepoIndex| i.archive.as_deref() == Some(suite.as_str());
+            let components = distinct_over(repo.indexes.iter().filter(|i| in_suite(i)), |i| {
+                i.component.clone()
+            });
+            let archs = distinct_over(repo.indexes.iter().filter(|i| in_suite(i)), |i| {
+                i.arch.clone()
+            });
+            body.push(vec![
+                repo.uri.clone(),
+                suite,
+                join_or_dash(&components),
+                join_or_dash(&archs),
+            ]);
+        }
+    }
+
     table(&headers, &body)
 }
 
@@ -133,7 +135,7 @@ pub fn package_versions(rows: &[crate::query::VersionRow]) -> String {
     let body: Vec<Vec<String>> = rows
         .iter()
         .map(|r| {
-            let mut repo = repo_column(&r.repositories, false);
+            let mut repo = repo_column(&r.repositories);
             if r.installed {
                 repo.push_str("  [installed]");
             }
@@ -141,6 +143,25 @@ pub fn package_versions(rows: &[crate::query::VersionRow]) -> String {
         })
         .collect();
     table(&headers, &body)
+}
+
+/// Distinct non-empty values of `get` over the given indexes, in order.
+fn distinct_over<'a, I>(
+    indexes: I,
+    get: impl Fn(&crate::repository::RepoIndex) -> Option<String>,
+) -> Vec<String>
+where
+    I: IntoIterator<Item = &'a crate::repository::RepoIndex>,
+{
+    let mut out = Vec::new();
+    for idx in indexes {
+        if let Some(v) = get(idx) {
+            if !out.contains(&v) {
+                out.push(v);
+            }
+        }
+    }
+    out
 }
 
 fn join_or_dash(values: &[String]) -> String {

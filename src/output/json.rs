@@ -73,6 +73,8 @@ pub struct JsonVersion {
     pub version: String,
     /// Architecture of the version.
     pub architecture: String,
+    /// Whether this version is the currently installed one (dpkg state).
+    pub installed: bool,
     /// Repositories providing exactly this version. Omitted when a `--repo`
     /// filter is active (the repository is reported once, at the top level).
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -84,6 +86,7 @@ fn json_version(r: &VersionRow, with_repositories: bool) -> JsonVersion {
         name: r.name.clone(),
         version: r.version.clone(),
         architecture: r.arch.clone(),
+        installed: r.installed,
         repositories: if with_repositories {
             Some(r.repositories.iter().map(RepoRef::from).collect())
         } else {
@@ -92,16 +95,19 @@ fn json_version(r: &VersionRow, with_repositories: bool) -> JsonVersion {
     }
 }
 
-/// `--installed --json` / `--all --json` (without `--repo`):
-/// `{ "packages": [ { name, version, architecture, repositories } ] }`.
+/// `--installed --json`, `--all --json` and package queries (without
+/// `--repo`): `{ "packages": [ { name, version, architecture, installed,
+/// repositories } ] }`.
 #[must_use]
 pub fn versions(rows: &[VersionRow]) -> serde_json::Value {
     let packages: Vec<JsonVersion> = rows.iter().map(|r| json_version(r, true)).collect();
     serde_json::json!({ "packages": packages })
 }
 
-/// `--repo <repo> --json` for `--installed` / `--all` / several packages:
-/// `{ "repository": {...}, "packages": [ { name, version, architecture } ] }`.
+/// `--repo <repo> --json` for `--installed` / `--all` / package queries:
+/// `{ "repository": {...}, "packages": [ { name, version, architecture,
+/// installed } ] }`. The selected repository is reported once at the top
+/// level, so the rows omit their (redundant) `repositories` arrays.
 #[must_use]
 pub fn for_repo(repository: &Repository, rows: &[VersionRow]) -> serde_json::Value {
     let packages: Vec<JsonVersion> = rows.iter().map(|r| json_version(r, false)).collect();
@@ -109,24 +115,6 @@ pub fn for_repo(repository: &Repository, rows: &[VersionRow]) -> serde_json::Val
         "repository": repository_json(repository),
         "packages": packages,
     })
-}
-
-/// `apt-lists <package> --json` for a single package: keeps the per-version
-/// `installed` flag.
-#[must_use]
-pub fn package(name: &str, rows: &[VersionRow]) -> serde_json::Value {
-    let versions: Vec<serde_json::Value> = rows
-        .iter()
-        .map(|r| {
-            serde_json::json!({
-                "version": r.version,
-                "architecture": r.arch,
-                "installed": r.installed,
-                "repositories": r.repositories.iter().map(RepoRef::from).collect::<Vec<_>>(),
-            })
-        })
-        .collect();
-    serde_json::json!({ "package": name, "versions": versions })
 }
 
 /// `--repos --json`: repositories grouped by URI, with per-suite detail.

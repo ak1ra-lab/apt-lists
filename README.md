@@ -9,9 +9,9 @@ A small, read-only, repository-aware companion to `apt list`.
 
 ```console
 $ apt-lists --installed --repo https://deb.debian.org/debian-security/
-PACKAGE  VERSION        ARCH
-libbaz   3.1-2+deb13u1  amd64
-seconly  2.0            all
+PACKAGE  VERSION        ARCH   REPOSITORY
+libbaz   3.1-2+deb13u1  amd64  https://deb.debian.org/debian-security/
+seconly  2.0            all    https://deb.debian.org/debian-security/
 ```
 
 It is **not** a repository management tool. It never downloads package
@@ -149,6 +149,15 @@ Supported shells: `bash`, `zsh`, `fish`, `elvish`, `powershell`.
 
 ### JSON
 
+Every package-listing mode uses the same two shapes, so scripts can rely on
+a uniform field set:
+
+* without `--repo`: `{ "packages": [ ... ] }`, every row carries its
+  `repositories` array and the `installed` flag;
+* with `--repo`: `{ "repository": {...}, "packages": [ ... ] }`, the selected
+  repository is reported once at the top level, so the rows omit their
+  (redundant) `repositories` array.
+
 ```console
 $ apt-lists --installed --repo https://deb.debian.org/debian-security/ --json
 ```
@@ -170,16 +179,28 @@ $ apt-lists --installed --repo https://deb.debian.org/debian-security/ --json
     ]
   },
   "packages": [
-    { "name": "libbaz", "version": "3.1-2+deb13u1", "architecture": "amd64" },
-    { "name": "seconly", "version": "2.0", "architecture": "all" }
+    {
+      "name": "libbaz",
+      "version": "3.1-2+deb13u1",
+      "architecture": "amd64",
+      "installed": true
+    },
+    {
+      "name": "seconly",
+      "version": "2.0",
+      "architecture": "all",
+      "installed": true
+    }
   ]
 }
 ```
 
-Without `--repo`, every package row carries its full `repositories` array
-(with `index_filename`, `index_type` and all Release metadata verbatim).
-No canonical URI reconstruction is promised: the values are the raw ones
-libapt-pkg exposes.
+Single-package queries (`apt-lists foo --json`) use the same `packages`
+envelope as every other mode. With `--repos --json`, the per-suite detail
+(suites with codename, components, architectures) and the Release metadata
+(`origin`, `label`, per-index `index_filename`/`index_type`) are reported in
+full. No canonical URI reconstruction is promised: the values are the raw
+ones libapt-pkg exposes.
 
 ## Requirements
 
@@ -213,6 +234,12 @@ cargo build --release
   repository provenance but is what makes locally installed packages visible.
 * The tool is strictly read-only: `Cache::update()` is never called, nothing
   is marked for install/remove, no locks are taken.
+* Human tables always use the same columns: a `--repo` filter narrows the
+  rows, never the columns, and `--repos` prints one row per repository and
+  suite so the table stays narrow.
+* Output is written through explicit, error-checked writes: when the reader
+  of a pipe goes away (`apt-lists -i | head`), the tool exits quietly with
+  status 141 (128 + SIGPIPE) instead of panicking.
 
 ## Code style and safety
 
@@ -242,8 +269,10 @@ same suite on two official repositories (archive + mirror) staying distinct,
 exact version matching (positive and negative), multiple providers of one
 exact version, architectures (`amd64`/`i386`/`all`), candidate ≠ installed,
 manual vs auto installed, status-only packages, config-files state, unknown
-and ambiguous repository selectors, shell completion generation, and the JSON
-output shapes — both at the library level and end-to-end through the CLI
+and ambiguous repository selectors, shell completion generation, uniform
+table columns across modes, the compact `--repos` table, the JSON output
+shapes, and broken-pipe handling (`apt-lists -i | head` exits quietly with
+status 141) — both at the library level and end-to-end through the CLI
 binary.
 
 ```console

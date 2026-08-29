@@ -25,9 +25,9 @@ are automatic; everything else counts as manually installed.
 
 ```console
 $ apt-lists --installed --repo https://deb.debian.org/debian-security/
-PACKAGE  VERSION        ARCH
-libbaz   3.1-2+deb13u1  amd64
-seconly  2.0            all
+PACKAGE  VERSION        ARCH   REPOSITORY
+libbaz   3.1-2+deb13u1  amd64  https://deb.debian.org/debian-security/
+seconly  2.0            all    https://deb.debian.org/debian-security/
 
 $ apt-lists --installed --repo deb.debian.org   # ambiguous hostname
 apt-lists: error: repository selector 'deb.debian.org' is ambiguous; it matches multiple repository URIs:
@@ -38,9 +38,9 @@ pass the full repository URI to disambiguate
 exit code: 1
 
 $ apt-lists --installed --repo deb.debian.org/debian-security   # path disambiguates
-PACKAGE  VERSION        ARCH
-libbaz   3.1-2+deb13u1  amd64
-seconly  2.0            all
+PACKAGE  VERSION        ARCH   REPOSITORY
+libbaz   3.1-2+deb13u1  amd64  https://deb.debian.org/debian-security/
+seconly  2.0            all    https://deb.debian.org/debian-security/
 
 $ apt-lists --installed   # (-i also works)
 PACKAGE    VERSION        ARCH   REPOSITORY
@@ -54,11 +54,11 @@ seconly    2.0            all    https://deb.debian.org/debian-security/
 shared     5.0            all    https://deb.debian.org/debian/
 
 $ apt-lists --repos   # (-R also works)
-REPOSITORY                               SITE               SUITE            COMPONENTS  ARCHS        ORIGIN           LABEL
-https://deb.debian.org/debian-security/  deb.debian.org     trixie-security  main        amd64        Debian Security  Debian Security
-https://deb.debian.org/debian-updates/   deb.debian.org     trixie-updates   main        amd64        Debian           Debian
-https://deb.debian.org/debian/           deb.debian.org     trixie           main        amd64, i386  Debian           Debian
-https://ftp.us.debian.org/debian/        ftp.us.debian.org  trixie           main        amd64        Debian           Debian
+REPOSITORY                               SUITE            COMPONENTS  ARCHS
+https://deb.debian.org/debian-security/  trixie-security  main        amd64
+https://deb.debian.org/debian-updates/   trixie-updates   main        amd64
+https://deb.debian.org/debian/           trixie           main        amd64, i386
+https://ftp.us.debian.org/debian/        trixie           main        amd64
 
 $ apt-lists foo
 PACKAGE  VERSION        ARCH   REPOSITORY
@@ -80,11 +80,13 @@ $ apt-lists --installed --repo https://deb.debian.org/debian-security/ --json
   "packages": [
     {
       "architecture": "amd64",
+      "installed": true,
       "name": "libbaz",
       "version": "3.1-2+deb13u1"
     },
     {
       "architecture": "all",
+      "installed": true,
       "name": "seconly",
       "version": "2.0"
     }
@@ -118,5 +120,8 @@ repositories known to the cache:
   https://ftp.us.debian.org/debian/
 
 exit code: 1
+
+$ apt-lists --installed | head -n 1   # pipelines work; no broken-pipe panic
+PACKAGE    VERSION        ARCH   REPOSITORY
 ```
 

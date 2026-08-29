@@ -4,8 +4,12 @@
 //! of a command hierarchy): `--installed`, `--repo`, `--all`, `--repos`,
 //! `--json`, plus short forms and shell completion generation.
 
+use std::io::{BufWriter, Write};
+
 use clap::{CommandFactory, Parser};
 use clap_complete::{Generator, Shell};
+
+use crate::error::AptListsError;
 
 /// A read-only, repository-aware companion to `apt list`.
 ///
@@ -90,18 +94,26 @@ impl Args {
 
     /// Print the completion script for `shell` (if requested).
     ///
-    /// Returns `true` when a completion script was printed and the program
-    /// should exit successfully.
-    #[must_use]
-    pub fn print_completion(&self) -> bool {
+    /// Returns `Ok(true)` when a completion script was printed and the
+    /// program should exit successfully.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the script cannot be written to stdout, e.g.
+    /// because the reader closed the pipe (`... | head`).
+    pub fn print_completion(&self) -> Result<bool, AptListsError> {
         let Some(shell) = self.generate_completion else {
-            return false;
+            return Ok(false);
         };
         let mut cmd = Args::command();
         cmd.build();
         cmd.set_bin_name("apt-lists");
-        shell.generate(&cmd, &mut std::io::stdout());
-        true
+        // Buffered so a closed stdout surfaces here as a `BrokenPipe` error
+        // on the flush below instead of a panic inside clap_complete.
+        let mut out = BufWriter::new(std::io::stdout().lock());
+        shell.generate(&cmd, &mut out);
+        out.flush()?;
+        Ok(true)
     }
 }
 

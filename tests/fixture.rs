@@ -38,7 +38,7 @@
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Mutex, OnceLock};
 
@@ -114,9 +114,23 @@ static COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 impl Fixture {
     /// Build a fresh isolated APT root under the system temp dir.
+    #[must_use]
+    pub fn build(tag: &str) -> Fixture {
+        Self::build_inner(tag, 0)
+    }
+
+    /// Build a fixture with `n` additional synthetic packages
+    /// (`synth-NNNNN`, version 1.0, amd64, only in the main archive, not
+    /// installed). Used to produce output larger than the OS pipe buffer in
+    /// the broken-pipe test.
+    #[must_use]
+    pub fn build_with_synthetic_packages(tag: &str, n: usize) -> Fixture {
+        Self::build_inner(tag, n)
+    }
+
     // The builder is long because it is mostly fixture *data*.
     #[allow(clippy::too_many_lines)]
-    pub fn build(tag: &str) -> Fixture {
+    fn build_inner(tag: &str, synthetic: usize) -> Fixture {
         let n = COUNTER.fetch_add(1, Ordering::SeqCst);
         let dir = tempfile::Builder::new()
             .prefix(&format!("apt-lists-test-{tag}-{n}-"))
@@ -163,18 +177,22 @@ impl Fixture {
         );
 
         // Package indexes.
-        f.write_packages(
-            DEBIAN,
-            "trixie",
-            "amd64",
-            &[
-                stanza("foo", "2.0-1", "amd64", "debian foo"),
-                stanza("libbaz", "3.1-2", "amd64", "baz library"),
-                stanza("shared", "5.0", "all", "shared everywhere"),
-                stanza("debonly", "1.0", "all", "debian only"),
-                stanza("secman", "1.0", "all", "manual fixture pkg"),
-            ],
-        );
+        let mut debian_amd64 = vec![
+            stanza("foo", "2.0-1", "amd64", "debian foo"),
+            stanza("libbaz", "3.1-2", "amd64", "baz library"),
+            stanza("shared", "5.0", "all", "shared everywhere"),
+            stanza("debonly", "1.0", "all", "debian only"),
+            stanza("secman", "1.0", "all", "manual fixture pkg"),
+        ];
+        debian_amd64.extend((0..synthetic).map(|i| {
+            stanza(
+                &format!("synth-{i:05}"),
+                "1.0",
+                "amd64",
+                "synthetic package",
+            )
+        }));
+        f.write_packages(DEBIAN, "trixie", "amd64", &debian_amd64);
         f.write_packages(
             DEBIAN,
             "trixie",
@@ -618,6 +636,7 @@ fn json_output_shapes() {
             "repo filtered rows must not repeat repositories"
         );
         assert!(p["name"].is_string() && p["version"].is_string() && p["architecture"].is_string());
+        assert_eq!(p["installed"], true, "installed flag is always present");
     }
 
     // --installed --json (no repo filter): repositories inline.
@@ -631,6 +650,19 @@ fn json_output_shapes() {
         .unwrap();
     assert_eq!(foo["repositories"].as_array().unwrap().len(), 2);
     assert_eq!(foo["repositories"][0]["index_type"], "Debian Package Index");
+    assert_eq!(foo["installed"], true);
+
+    // --all --json: versions that are not installed carry installed: false.
+    let rows = query::all_versions(&scan, &catalog, filter_none());
+    let value = apt_lists::output::json::versions(&rows);
+    let updonly = value["packages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["name"] == "updonly")
+        .unwrap();
+    assert_eq!(updonly["installed"], false);
+    assert_eq!(updonly["repositories"][0]["uri"], format!("{UPDATES}/"));
 
     // --repos --json
     let value = apt_lists::output::json::repos(&catalog);
@@ -685,11 +717,15 @@ fn cli_repos_and_installed_and_repo_filtering() {
     }
 
     // --installed --repo <security>: exact-version semantics, short forms.
+    // The table shape is uniform: the REPOSITORY column is present even with
+    // a --repo filter.
     let (stdout, _stderr, code) = run_cli(&f, &["-i", "-r", SECURITY]);
     assert_eq!(code, Some(0));
-    assert!(
-        stdout.contains("libbaz") && stdout.contains("seconly"),
-        "{stdout}"
+    assert_eq!(
+        stdout,
+        "PACKAGE  VERSION        ARCH   REPOSITORY\n\
+         libbaz   3.1-2+deb13u1  amd64  https://deb.debian.org/debian-security/\n\
+         seconly  2.0            all    https://deb.debian.org/debian-security/\n"
     );
     assert!(
         !stdout.contains("foo"),
@@ -717,18 +753,128 @@ fn cli_repos_and_installed_and_repo_filtering() {
     assert!(stdout.contains("i386"));
     assert!(stdout.contains("[installed]"));
 
+    // Single-package JSON uses the same envelope and row fields as the
+    // other no-repo modes.
+    let (stdout, _stderr, code) = run_cli(&f, &["foo", "--json"]);
+    assert_eq!(code, Some(0));
+    let value: serde_json::Value =
+        serde_json::from_str(&stdout).unwrap_or_else(|e| panic!("invalid JSON: {e}\n{stdout}"));
+    let packages = value["packages"].as_array().expect("packages envelope");
+    assert_eq!(packages.len(), 3);
+    assert!(packages
+        .iter()
+        .all(|p| p.get("installed").is_some() && p.get("repositories").is_some()));
+
     // JSON modes parse as JSON.
     for args in [
         vec!["--repos", "--json"],
         vec!["--installed", "--json"],
         vec!["--installed", "--repo", SECURITY, "--json"],
-        vec!["foo", "--json"],
+        vec!["foo", "shared", "--json"],
     ] {
         let (stdout, _stderr, code) = run_cli(&f, &args);
         assert_eq!(code, Some(0), "args: {args:?}");
         serde_json::from_str::<serde_json::Value>(&stdout)
             .unwrap_or_else(|e| panic!("invalid JSON for {args:?}: {e}\n{stdout}"));
     }
+}
+
+#[test]
+fn cli_human_tables_have_uniform_columns() {
+    let f = Fixture::build("cli-uniform");
+
+    // Every human package-listing mode emits the same four columns; a
+    // --repo filter narrows the rows, never the columns.
+    for args in [
+        vec!["-i"],
+        vec!["-i", "-r", SECURITY],
+        vec!["-r", SECURITY],
+        vec!["-a"],
+        vec!["foo"],
+        vec!["foo", "-r", DEBIAN],
+        vec!["-m"],
+    ] {
+        let (stdout, _stderr, code) = run_cli(&f, &args);
+        assert_eq!(code, Some(0), "args: {args:?}");
+        let header = stdout.lines().next().unwrap_or_default();
+        for col in ["PACKAGE", "VERSION", "ARCH", "REPOSITORY"] {
+            assert!(header.contains(col), "args: {args:?} header: {header}");
+        }
+    }
+}
+
+#[test]
+fn cli_repos_human_output_is_compact() {
+    let f = Fixture::build("cli-repos");
+
+    let (stdout, _stderr, code) = run_cli(&f, &["--repos"]);
+    assert_eq!(code, Some(0));
+
+    // One row per repository and suite (here: 4 repositories x 1 suite);
+    // the wide SITE/ORIGIN/LABEL columns are only in the JSON output.
+    assert_eq!(
+        stdout.lines().count(),
+        5,
+        "header + one row per repository suite:\n{stdout}"
+    );
+    let header = stdout.lines().next().unwrap();
+    for col in ["REPOSITORY", "SUITE", "COMPONENTS", "ARCHS"] {
+        assert!(header.contains(col), "header: {header}");
+    }
+    assert!(!header.contains("SITE"), "header: {header}");
+    assert!(!header.contains("ORIGIN"), "header: {header}");
+    assert!(!header.contains("LABEL"), "header: {header}");
+
+    // The REPOSITORY column keeps the full URI, copy-pasteable for --repo.
+    let first_cells: Vec<String> = stdout
+        .lines()
+        .skip(1)
+        .map(|l| l.split("  ").next().unwrap_or_default().to_string())
+        .collect();
+    assert_eq!(
+        first_cells,
+        vec![
+            format!("{SECURITY}/"),
+            format!("{UPDATES}/"),
+            format!("{DEBIAN}/"),
+            format!("{MIRROR}/"),
+        ]
+    );
+    for (suite, archs) in [
+        ("trixie-security", "amd64"),
+        ("trixie-updates", "amd64"),
+        ("trixie", "amd64, i386"),
+    ] {
+        assert!(
+            stdout.contains(suite) && stdout.contains(archs),
+            "suite {suite} / archs {archs} missing:\n{stdout}"
+        );
+    }
+}
+
+#[test]
+fn cli_broken_pipe_exits_quietly() {
+    // Enough packages that the table exceeds the 64 KiB pipe buffer: the
+    // child cannot finish its write once the reader goes away, so the
+    // EPIPE handling is deterministic.
+    let f = Fixture::build_with_synthetic_packages("cli-pipe", 5000);
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_apt-lists"))
+        .env("APT_CONFIG", f.apt_config())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn apt-lists");
+
+    // Close the read end (like `head` exiting): the child must fail its
+    // write with EPIPE and exit quietly, not panic.
+    drop(child.stdout.take());
+
+    let out = child.wait_with_output().expect("wait for apt-lists");
+    assert_eq!(out.status.code(), Some(141), "status: {out:?}");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(!stderr.contains("panicked"), "stderr: {stderr}");
+    assert!(stderr.is_empty(), "stderr: {stderr}");
 }
 
 #[test]

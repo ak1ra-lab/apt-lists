@@ -3,29 +3,40 @@
 //! See the library documentation (`apt_lists`) for the modules and the
 //! README for usage, provenance semantics and examples.
 
+use std::io::Write;
+
 use clap::Parser;
 
 use apt_lists::apt;
 use apt_lists::cli::{Args, Mode};
 use apt_lists::error::AptListsError;
 use apt_lists::output::{human, json};
-use apt_lists::query::{self, InstalledFilter, RepoFilter};
-use apt_lists::repository::RepoCatalog;
+use apt_lists::query::{self, InstalledFilter, RepoFilter, VersionRow};
+use apt_lists::repository::{RepoCatalog, ResolvedRepo};
 
 fn main() {
     let args = Args::parse();
 
-    if args.print_completion() {
-        return;
-    }
-
     if let Err(err) = run(&args) {
+        // A closed stdout pipe (`apt-lists -i | head`) is normal usage, not
+        // an error: exit quietly with the conventional `128 + SIGPIPE`
+        // status instead of panicking the way the print macros would.
+        if matches!(
+            &err,
+            AptListsError::Output(e) if e.kind() == std::io::ErrorKind::BrokenPipe
+        ) {
+            std::process::exit(141);
+        }
         eprintln!("apt-lists: error: {err}");
         std::process::exit(1);
     }
 }
 
 fn run(args: &Args) -> Result<(), AptListsError> {
+    if args.print_completion()? {
+        return Ok(());
+    }
+
     let cache = apt::open_cache()?;
     let scan = apt::scan(&cache);
     let catalog = RepoCatalog::from_indexes(&scan.indexes);
@@ -49,9 +60,9 @@ fn run(args: &Args) -> Result<(), AptListsError> {
                 return Err(AptListsError::NoPackageIndexes);
             }
             if args.json {
-                println!("{}", json::to_pretty(&json::repos(&catalog)));
+                write_stdout(&json::to_pretty(&json::repos(&catalog)))?;
             } else {
-                print!("{}", human::repos(&catalog));
+                write_stdout(&human::repos(&catalog))?;
             }
         }
         Mode::Installed => {
@@ -67,14 +78,14 @@ fn run(args: &Args) -> Result<(), AptListsError> {
             if catalog.is_empty() {
                 no_indexes_warning();
             }
-            emit_rows(args, resolved.as_ref(), &rows);
+            emit_rows(args, resolved.as_ref(), &rows)?;
         }
         Mode::All => {
             if catalog.is_empty() {
                 no_indexes_warning();
             }
-            let rows = with_filter(&scan, &catalog, resolved.as_ref(), query::all_versions);
-            emit_rows(args, resolved.as_ref(), &rows);
+            let rows = query::all_versions(&scan, &catalog, filter_of(resolved.as_ref()));
+            emit_rows(args, resolved.as_ref(), &rows)?;
         }
         Mode::Packages => {
             if catalog.is_empty() {
@@ -85,77 +96,57 @@ fn run(args: &Args) -> Result<(), AptListsError> {
             for name in &args.packages {
                 rows.extend(query::package_versions(&scan, &catalog, name, filter)?);
             }
-            emit_package_rows(args, resolved.as_ref(), &rows);
+            emit_rows(args, resolved.as_ref(), &rows)?;
         }
     }
 
     Ok(())
 }
 
-fn with_filter(
-    scan: &apt::CacheScan,
-    catalog: &RepoCatalog,
-    resolved: Option<&apt_lists::repository::ResolvedRepo>,
-    f: fn(&apt::CacheScan, &RepoCatalog, RepoFilter<'_>) -> Vec<apt_lists::query::VersionRow>,
-) -> Vec<apt_lists::query::VersionRow> {
-    f(scan, catalog, filter_of(resolved))
-}
-
-fn filter_of(resolved: Option<&apt_lists::repository::ResolvedRepo>) -> RepoFilter<'_> {
+fn filter_of(resolved: Option<&ResolvedRepo>) -> RepoFilter<'_> {
     match resolved {
         Some(sel) => RepoFilter::Selected(sel),
         None => RepoFilter::None,
     }
 }
 
+/// Emit package/version rows for every package-listing mode. The shapes are
+/// uniform across modes:
+///
+/// * JSON without `--repo`: `{ "packages": [...] }`, each row carries its
+///   repositories and the installed flag;
+/// * JSON with `--repo`: `{ "repository": ..., "packages": [...] }`, the
+///   selected repository is reported once at the top level;
+/// * human: always the PACKAGE/VERSION/ARCH/REPOSITORY columns.
 fn emit_rows(
     args: &Args,
-    resolved: Option<&apt_lists::repository::ResolvedRepo>,
-    rows: &[apt_lists::query::VersionRow],
-) {
+    resolved: Option<&ResolvedRepo>,
+    rows: &[VersionRow],
+) -> Result<(), AptListsError> {
     if args.json {
-        match resolved {
-            Some(sel) => println!(
-                "{}",
-                json::to_pretty(&json::for_repo(&sel.repository, rows))
-            ),
-            None => println!("{}", json::to_pretty(&json::versions(rows))),
-        }
+        let value = match resolved {
+            Some(sel) => json::for_repo(&sel.repository, rows),
+            None => json::versions(rows),
+        };
+        write_stdout(&json::to_pretty(&value))
     } else if !rows.is_empty() {
-        let repo_filtered = args.repo.is_some();
         let text = match args.mode() {
-            Mode::Installed => human::installed(rows, repo_filtered),
+            Mode::Installed => human::installed(rows),
             _ => human::package_versions(rows),
         };
-        print!("{text}");
+        write_stdout(&text)
+    } else {
+        Ok(())
     }
 }
 
-fn emit_package_rows(
-    args: &Args,
-    resolved: Option<&apt_lists::repository::ResolvedRepo>,
-    rows: &[apt_lists::query::VersionRow],
-) {
-    if args.json {
-        match resolved {
-            Some(sel) => println!(
-                "{}",
-                json::to_pretty(&json::for_repo(&sel.repository, rows))
-            ),
-            None => {
-                if args.packages.len() == 1 {
-                    println!(
-                        "{}",
-                        json::to_pretty(&json::package(&args.packages[0], rows))
-                    );
-                } else {
-                    println!("{}", json::to_pretty(&json::versions(rows)));
-                }
-            }
-        }
-    } else if !rows.is_empty() {
-        print!("{}", human::package_versions(rows));
-    }
+/// Write to stdout, propagating OS errors (a broken pipe is handled by the
+/// caller as a normal end of pipeline, not as an error report).
+fn write_stdout(text: &str) -> Result<(), AptListsError> {
+    let mut stdout = std::io::stdout().lock();
+    stdout.write_all(text.as_bytes())?;
+    stdout.flush()?;
+    Ok(())
 }
 
 fn no_indexes_warning() {

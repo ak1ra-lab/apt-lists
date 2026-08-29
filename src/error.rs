@@ -33,6 +33,10 @@ pub enum AptListsError {
     },
     /// The requested package does not exist in the APT cache.
     PackageNotFound(String),
+    /// Writing to stdout failed. A closed pipe (`apt-lists ... | head`) is
+    /// reported as [`std::io::ErrorKind::BrokenPipe`] and handled specially
+    /// by the binary instead of being shown to the user.
+    Output(std::io::Error),
 }
 
 impl fmt::Display for AptListsError {
@@ -74,8 +78,15 @@ impl fmt::Display for AptListsError {
             AptListsError::PackageNotFound(name) => {
                 write!(f, "package '{name}' was not found in the APT cache")
             }
+            AptListsError::Output(e) => write!(f, "failed to write to stdout: {e}"),
         }
     }
 }
 
 impl std::error::Error for AptListsError {}
+
+impl From<std::io::Error> for AptListsError {
+    fn from(e: std::io::Error) -> Self {
+        AptListsError::Output(e)
+    }
+}
