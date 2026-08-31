@@ -28,10 +28,19 @@ use crate::error::AptListsError;
 // not make the clap surface clearer.
 #[allow(clippy::struct_excessive_bools)]
 pub struct Args {
+    /// List all available package versions (default when no mode is given).
+    #[arg(short = 'a', long, conflicts_with = "packages")]
+    pub all: bool,
+
     /// Show packages with an installed version (dpkg state), like
     /// `apt list --installed`.
     #[arg(short = 'i', long, conflicts_with_all = ["repos", "all", "packages"])]
     pub installed: bool,
+
+    /// Show only manually installed packages (implies `--installed`), like
+    /// `apt list --manual-installed`.
+    #[arg(short = 'm', long, conflicts_with_all = ["repos", "all", "packages"])]
+    pub manual_installed: bool,
 
     /// Only consider this repository. Accepts a repository URI
     /// (`https://deb.debian.org/debian-security/`) or a hostname
@@ -42,15 +51,6 @@ pub struct Args {
     /// List all repositories known to the current APT cache.
     #[arg(short = 'R', long, conflicts_with_all = ["installed", "all", "packages"])]
     pub repos: bool,
-
-    /// List all available package versions (default when no mode is given).
-    #[arg(short = 'a', long, conflicts_with = "packages")]
-    pub all: bool,
-
-    /// Show only manually installed packages (implies `--installed`), like
-    /// `apt list --manual-installed`.
-    #[arg(short = 'm', long, conflicts_with_all = ["repos", "all", "packages"])]
-    pub manual_installed: bool,
 
     /// Emit machine-readable JSON instead of a table.
     #[arg(short = 'j', long)]
