@@ -868,13 +868,89 @@ fn cli_repos_human_output_is_compact() {
     for (suite, archs) in [
         ("trixie-security", "amd64"),
         ("trixie-updates", "amd64"),
-        ("trixie", "amd64, i386"),
+        ("trixie", "amd64,i386"),
     ] {
         assert!(
             stdout.contains(suite) && stdout.contains(archs),
             "suite {suite} / archs {archs} missing:\n{stdout}"
         );
     }
+}
+
+#[test]
+fn cli_no_headers_and_pipeline_friendly_cells() {
+    let f = Fixture::build("cli-no-headers");
+
+    // --no-headers drops the header row; rows start with the first data
+    // cell and can be piped straight into `sort -k`.
+    let (stdout, _stderr, code) = run_cli(&f, &["--repos", "--no-headers"]);
+    assert_eq!(code, Some(0));
+    let lines: Vec<&str> = stdout.lines().collect();
+    assert_eq!(lines.len(), 4, "one row per repository suite:\n{stdout}");
+    assert!(
+        lines.iter().all(|l| l.starts_with("https://")),
+        "no header row, data only:\n{stdout}"
+    );
+    assert!(!stdout.contains("REPOSITORY"), "{stdout}");
+
+    // Pipeline use case: sort by a column (here PACKAGES, ascending).
+    let mut sorted: Vec<(String, usize)> = lines
+        .iter()
+        .map(|l| {
+            let packages = l
+                .rsplit(' ')
+                .find(|t| !t.is_empty())
+                .unwrap_or_default()
+                .parse::<usize>()
+                .unwrap_or_else(|e| panic!("PACKAGES token in {l}: {e}"));
+            let repo = l.split("  ").next().unwrap_or_default().to_string();
+            (repo, packages)
+        })
+        .collect();
+    sorted.sort_by_key(|(_, packages)| *packages);
+    assert_eq!(
+        sorted,
+        vec![
+            (format!("{SECURITY}/"), 2),
+            (format!("{UPDATES}/"), 2),
+            (format!("{MIRROR}/"), 3),
+            (format!("{DEBIAN}/"), 5),
+        ]
+    );
+
+    // Every table cell is a single whitespace-free token: splitting a row on
+    // whitespace yields exactly one token per column (multi-values are
+    // joined by a comma without a space).
+    for args in [
+        vec!["--repos", "--no-headers"],
+        vec!["-i", "--no-headers"],
+        vec!["-a", "--no-headers"],
+        vec!["foo", "--no-headers"],
+    ] {
+        let (stdout, _stderr, code) = run_cli(&f, &args);
+        assert_eq!(code, Some(0), "args: {args:?}");
+        let expected_cols = if args.first() == Some(&"--repos") {
+            5
+        } else {
+            4
+        };
+        for line in stdout.lines() {
+            let cols = line.split_whitespace().count();
+            // The row-final `[installed]` marker is the one sanctioned extra
+            // token; everything else must stay one token per column.
+            assert!(
+                cols == expected_cols
+                    || (cols == expected_cols + 1 && line.contains("[installed]")),
+                "args: {args:?}, {cols} columns in: {line}"
+            );
+        }
+    }
+
+    // With headers (the default) the output still starts with the header.
+    let (stdout, _stderr, code) = run_cli(&f, &["--repos"]);
+    assert_eq!(code, Some(0));
+    let header = stdout.lines().next().unwrap_or_default();
+    assert!(header.contains("REPOSITORY"), "header: {header}");
 }
 
 #[test]

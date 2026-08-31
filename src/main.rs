@@ -65,7 +65,11 @@ fn run(args: &Args) -> Result<(), AptListsError> {
                     &scan.package_counts,
                 )))?;
             } else {
-                write_stdout(&human::repos(&catalog, &scan.package_counts))?;
+                write_stdout(&human::repos(
+                    &catalog,
+                    &scan.package_counts,
+                    args.no_headers,
+                ))?;
             }
         }
         Mode::Installed => {
@@ -134,8 +138,8 @@ fn emit_rows(
         write_stdout(&json::to_pretty(&value))
     } else if !rows.is_empty() {
         let text = match args.mode() {
-            Mode::Installed => human::installed(rows),
-            _ => human::package_versions(rows),
+            Mode::Installed => human::installed(rows, args.no_headers),
+            _ => human::package_versions(rows, args.no_headers),
         };
         write_stdout(&text)
     } else {

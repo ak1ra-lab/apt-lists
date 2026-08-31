@@ -49,30 +49,36 @@ seconly  2.0            all    https://deb.debian.org/debian-security/
 $ apt-lists --installed   # (-i also works)
 PACKAGE    VERSION        ARCH   REPOSITORY
 debonly    1.0            all    https://deb.debian.org/debian/
-foo        2.0-1          amd64  https://deb.debian.org/debian/, https://ftp.us.debian.org/debian/
+foo        2.0-1          amd64  https://deb.debian.org/debian/,https://ftp.us.debian.org/debian/
 foo        2.0-1          i386   https://deb.debian.org/debian/
 libbaz     3.1-2+deb13u1  amd64  https://deb.debian.org/debian-security/
 localonly  4.2            all    -
 secman     1.0            all    https://deb.debian.org/debian/
 seconly    2.0            all    https://deb.debian.org/debian-security/
-shared     5.0            all    https://deb.debian.org/debian/
+shared     5.0            all    https://deb.debian.org/debian/,https://ftp.us.debian.org/debian/
 
 $ apt-lists --repos   # (-R also works)
-REPOSITORY                               SUITE            COMPONENTS  ARCHS        PACKAGES
-https://deb.debian.org/debian-security/  trixie-security  main        amd64        2
-https://deb.debian.org/debian-updates/   trixie-updates   main        amd64        2
-https://deb.debian.org/debian/           trixie           main        amd64, i386  5
-https://ftp.us.debian.org/debian/        trixie           main        amd64        3
+REPOSITORY                               SUITE            COMPONENTS  ARCHS       PACKAGES
+https://deb.debian.org/debian-security/  trixie-security  main        amd64       2
+https://deb.debian.org/debian-updates/   trixie-updates   main        amd64       2
+https://deb.debian.org/debian/           trixie           main        amd64,i386  5
+https://ftp.us.debian.org/debian/        trixie           main        amd64       3
+
+$ apt-lists --repos --no-headers | sort -k5,5n   # cells are single tokens; --no-headers drops the header
+https://deb.debian.org/debian-security/  trixie-security  main  amd64       2
+https://deb.debian.org/debian-updates/   trixie-updates   main  amd64       2
+https://ftp.us.debian.org/debian/        trixie           main  amd64       3
+https://deb.debian.org/debian/           trixie           main  amd64,i386  5
 
 $ apt-lists foo
 PACKAGE  VERSION        ARCH   REPOSITORY
 foo      2.0-1+deb13u1  amd64  https://deb.debian.org/debian-updates/
-foo      2.0-1          amd64  https://deb.debian.org/debian/, https://ftp.us.debian.org/debian/  [installed]
+foo      2.0-1          amd64  https://deb.debian.org/debian/,https://ftp.us.debian.org/debian/  [installed]
 foo      2.0-1          i386   https://deb.debian.org/debian/  [installed]
 
 $ apt-lists --manual-installed   # (-m also works)
 PACKAGE    VERSION        ARCH   REPOSITORY
-foo        2.0-1          amd64  https://deb.debian.org/debian/, https://ftp.us.debian.org/debian/
+foo        2.0-1          amd64  https://deb.debian.org/debian/,https://ftp.us.debian.org/debian/
 foo        2.0-1          i386   https://deb.debian.org/debian/
 libbaz     3.1-2+deb13u1  amd64  https://deb.debian.org/debian-security/
 localonly  4.2            all    -

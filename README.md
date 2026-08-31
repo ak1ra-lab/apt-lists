@@ -135,6 +135,26 @@ Short forms: `-i` (`--installed`), `-r` (`--repo`), `-R` (`--repos`),
 Add `--json` for machine-readable output. `--repo` composes with
 `--installed`, `--all` and package queries.
 
+### Piping tables
+
+Table cells are single whitespace-free tokens: multi-value cells (components,
+archs, repository URIs) are joined by a comma **without** a space, so the
+alignment padding is the only whitespace and `sort -k<n>` / `awk` address
+columns directly. `--no-headers` drops the header row (the column widths are
+then computed from the data alone):
+
+```console
+$ apt-lists --repos --no-headers | sort -k5,5n
+https://deb.debian.org/debian-security/  trixie-security  main  amd64       2
+https://deb.debian.org/debian-updates/   trixie-updates   main  amd64       2
+https://ftp.us.debian.org/debian/        trixie           main  amd64       3
+https://deb.debian.org/debian/           trixie           main  amd64,i386  5
+```
+
+The one exception is the row-final `[installed]` marker of package queries,
+which follows the REPOSITORY cell after two spaces (an extra token, so
+`-k1..-k4` still address the columns).
+
 ### Shell completion
 
 `apt-lists` can print completion scripts for your shell:
@@ -237,7 +257,9 @@ cargo build --release
   is marked for install/remove, no locks are taken.
 * Human tables always use the same columns: a `--repo` filter narrows the
   rows, never the columns, and `--repos` prints one row per repository and
-  suite so the table stays narrow.
+  suite so the table stays narrow. Cells are single whitespace-free tokens
+  (multi-values joined by `,`), so `--no-headers` output pipes straight into
+  `sort -k<n>`/`awk`.
 * Output is written through explicit, error-checked writes: when the reader
   of a pipe goes away (`apt-lists -i | head`), the tool exits quietly with
   status 141 (128 + SIGPIPE) instead of panicking.

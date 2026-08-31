@@ -48,6 +48,10 @@ See README.md for provenance semantics and examples.
   plus a PACKAGES column (distinct package names per suite, deduplicated per
   (uri, suite) key - not per index id, or `Architecture: all` packages
   overcount).
+- Table cells are single whitespace-free tokens: multi-value cells join with
+  `,` (no space) so `--no-headers` rows pipe into `sort -k<n>`/`awk`; the
+  row-final `[installed]` marker is the one sanctioned extra token. With
+  `--no-headers`, column widths come from the body alone.
 - JSON has exactly two envelopes: `{packages: [...]}` (rows carry
   `repositories` + `installed`) and, with `--repo`,
   `{repository: ..., packages: [...]}` (rows omit the redundant

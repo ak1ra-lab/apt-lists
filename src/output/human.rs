@@ -5,25 +5,43 @@
 //! never the columns. The repository catalog table (`--repos`) is one row
 //! per repository and suite; the wider Release-file metadata (origin, label,
 //! codename, index filenames) is available through `--json`.
+//!
+//! Cells are kept pipeline-friendly: multi-value cells are joined by a
+//! comma without a space, so every cell is a single whitespace-free token
+//! and the alignment padding is the column separator. With `--no-headers`
+//! the header row is dropped and rows can be piped straight into
+//! `sort -k<n>` or `awk`. The one exception is the row-final `[installed]`
+//! marker of package queries, which follows the REPOSITORY cell after two
+//! spaces.
 
-/// Render a table with a header row; columns are as wide as their widest
-/// cell. Used instead of a table crate to keep output stable and compact.
+/// Render a table; columns are as wide as their widest cell. Used instead of
+/// a table crate to keep output stable and compact.
+///
+/// The header row is omitted when `headers` is `None` (`--no-headers`); the
+/// column widths are then computed from the body alone.
 #[must_use]
-pub fn table(headers: &[&str], rows: &[Vec<String>]) -> String {
-    let widths: Vec<usize> = headers
-        .iter()
-        .enumerate()
-        .map(|(i, h)| {
-            rows.iter()
-                .map(|r| r.get(i).map_or(0, |c| c.chars().count()))
-                .max()
-                .unwrap_or(0)
-                .max(h.chars().count())
+pub fn table(headers: Option<&[&str]>, rows: &[Vec<String>]) -> String {
+    let header_row: &[&str] = headers.unwrap_or_default();
+    let ncols = if header_row.is_empty() {
+        rows.first().map_or(0, Vec::len)
+    } else {
+        header_row.len()
+    };
+    let widths: Vec<usize> = (0..ncols)
+        .map(|i| {
+            let body = rows
+                .iter()
+                .filter_map(|r| r.get(i))
+                .map(|c| c.chars().count());
+            let header = header_row.get(i).map_or(0, |h| h.chars().count());
+            body.chain(std::iter::once(header)).max().unwrap_or(0)
         })
         .collect();
 
     let mut out = String::new();
-    out.push_str(&row_line(headers, &widths));
+    if !header_row.is_empty() {
+        out.push_str(&row_line(header_row, &widths));
+    }
     for r in rows {
         out.push_str(&row_line(r, &widths));
     }
@@ -47,7 +65,9 @@ fn row_line<S: AsRef<str>>(cells: &[S], widths: &[usize]) -> String {
 }
 
 /// Join repository URIs for the human REPOSITORY column. The full URI is
-/// kept verbatim so the value can be passed to `--repo` unchanged.
+/// kept verbatim so the value can be passed to `--repo` unchanged; multiple
+/// URIs are joined by a comma without a space to keep the cell a single
+/// whitespace-free token.
 #[must_use]
 pub fn repo_column(repos: &[crate::repository::RepoIndex]) -> String {
     if repos.is_empty() {
@@ -60,16 +80,17 @@ pub fn repo_column(repos: &[crate::repository::RepoIndex]) -> String {
             uris.push(idx.uri.clone());
         }
     }
-    uris.join(", ")
+    uris.join(",")
 }
 
 /// Format installed-version rows (`--installed`, optionally `--repo`).
 ///
 /// The REPOSITORY column is always present: without a filter it lists every
 /// repository that provides the exact installed version (`-` when none
-/// does), with a filter it repeats the selected repository.
+/// does), with a filter it repeats the selected repository. The header row
+/// is omitted with `no_headers`.
 #[must_use]
-pub fn installed(rows: &[crate::query::VersionRow]) -> String {
+pub fn installed(rows: &[crate::query::VersionRow], no_headers: bool) -> String {
     let headers = ["PACKAGE", "VERSION", "ARCH", "REPOSITORY"];
     let body: Vec<Vec<String>> = rows
         .iter()
@@ -82,7 +103,7 @@ pub fn installed(rows: &[crate::query::VersionRow]) -> String {
             ]
         })
         .collect();
-    table(&headers, &body)
+    table(header_if(&headers, !no_headers), &body)
 }
 
 /// Format the repository catalog (`--repos`): one row per repository and
@@ -91,11 +112,13 @@ pub fn installed(rows: &[crate::query::VersionRow]) -> String {
 /// `Architecture: all` package listed in several architecture indexes of one
 /// suite counts once). SITE is omitted because it is the host part of the
 /// REPOSITORY URI, and ORIGIN/LABEL are Release-file metadata not related to
-/// the host; both stay available through `--json`.
+/// the host; both stay available through `--json`. The header row is omitted
+/// with `no_headers`.
 #[must_use]
 pub fn repos(
     catalog: &crate::repository::RepoCatalog,
     counts: &crate::apt::PackageCounts,
+    no_headers: bool,
 ) -> String {
     let headers = ["REPOSITORY", "SUITE", "COMPONENTS", "ARCHS", "PACKAGES"];
     let mut body: Vec<Vec<String>> = Vec::new();
@@ -133,12 +156,14 @@ pub fn repos(
         }
     }
 
-    table(&headers, &body)
+    table(header_if(&headers, !no_headers), &body)
 }
 
 /// Format version rows for one or more packages (`apt-lists <package>`).
+/// The `[installed]` marker is a row-final token after the REPOSITORY cell;
+/// the header row is omitted with `no_headers`.
 #[must_use]
-pub fn package_versions(rows: &[crate::query::VersionRow]) -> String {
+pub fn package_versions(rows: &[crate::query::VersionRow], no_headers: bool) -> String {
     let headers = ["PACKAGE", "VERSION", "ARCH", "REPOSITORY"];
     let body: Vec<Vec<String>> = rows
         .iter()
@@ -150,7 +175,7 @@ pub fn package_versions(rows: &[crate::query::VersionRow]) -> String {
             vec![r.name.clone(), r.version.clone(), r.arch.clone(), repo]
         })
         .collect();
-    table(&headers, &body)
+    table(header_if(&headers, !no_headers), &body)
 }
 
 /// Distinct non-empty values of `get` over the given indexes, in order.
@@ -172,10 +197,19 @@ where
     out
 }
 
+/// The header argument for [`table`]: the header row, or `None` to omit it.
+fn header_if<'a>(headers: &'a [&'a str], show: bool) -> Option<&'a [&'a str]> {
+    if show {
+        Some(headers)
+    } else {
+        None
+    }
+}
+
 fn join_or_dash(values: &[String]) -> String {
     if values.is_empty() {
         "-".to_string()
     } else {
-        values.join(", ")
+        values.join(",")
     }
 }

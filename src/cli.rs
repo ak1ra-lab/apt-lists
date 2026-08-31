@@ -2,7 +2,8 @@
 //!
 //! The option surface deliberately mirrors `apt list` (flat options instead
 //! of a command hierarchy): `--installed`, `--repo`, `--all`, `--repos`,
-//! `--json`, plus short forms and shell completion generation.
+//! `--json`, `--no-headers`, plus short forms and shell completion
+//! generation.
 
 use std::io::{BufWriter, Write};
 
@@ -55,6 +56,13 @@ pub struct Args {
     /// Emit machine-readable JSON instead of a table.
     #[arg(short = 'j', long)]
     pub json: bool,
+
+    /// Omit the header row of human table output. Table cells are single
+    /// whitespace-free tokens (multi-values are joined by a comma without a
+    /// space), so rows pipe directly into `sort -k<n>` or `awk`. Ignored
+    /// with `--json`.
+    #[arg(long)]
+    pub no_headers: bool,
 
     /// Print a shell completion script for the given shell to stdout and
     /// exit, e.g. `apt-lists --generate-completion bash`.
