@@ -19,7 +19,7 @@ lists, installs or removes packages, and never modifies APT configuration or
 the dpkg database. It only reads the state that `libapt-pkg` already has.
 
 A full annotated transcript is available in
-[`examples/example-output.md`](examples/example-output.md).
+[`docs/example-output.md`](docs/example-output.md).
 
 ## Provenance semantics (read this first)
 

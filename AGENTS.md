@@ -56,7 +56,7 @@ See README.md for provenance semantics and examples.
   they panic on EPIPE. Closed pipes exit quietly with 141
   (`AptListsError::Output` + `ErrorKind::BrokenPipe`).
 - serde_json has no `preserve_order`: object keys print alphabetically, so
-  example transcripts in README.md and examples/example-output.md show sorted
+  example transcripts in README.md and docs/example-output.md show sorted
   keys.
 
 ## Testing
