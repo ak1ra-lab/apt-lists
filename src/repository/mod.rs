@@ -151,10 +151,11 @@ impl Repository {
 fn distinct(indexes: &[RepoIndex], get: impl Fn(&RepoIndex) -> Option<String>) -> Vec<String> {
     let mut out = Vec::new();
     for idx in indexes {
-        if let Some(v) = get(idx) {
-            if !out.contains(&v) {
-                out.push(v);
-            }
+        let Some(v) = get(idx) else {
+            continue;
+        };
+        if !out.contains(&v) {
+            out.push(v);
         }
     }
     out

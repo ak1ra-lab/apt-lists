@@ -18,7 +18,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use oma_apt::cache::{Cache, PackageSort};
 
 use crate::error::AptListsError;
-use crate::repository::{normalize_uri, RepoIndex};
+use crate::repository::{RepoIndex, normalize_uri};
 
 /// Distinct package names per (repository base URI, suite/archive).
 ///

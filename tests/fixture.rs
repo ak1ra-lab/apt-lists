@@ -445,9 +445,10 @@ fn candidate_version_is_never_used_for_installed_queries() {
     let sel = catalog.resolve(SECURITY).unwrap();
     let rows = query::installed(&scan, &catalog, RepoFilter::Selected(&sel), installed_all());
     assert_eq!(rows.len(), 2);
-    assert!(rows
-        .iter()
-        .any(|r| r.name == "libbaz" && r.version == "3.1-2+deb13u1" && r.arch == "amd64"));
+    assert!(
+        rows.iter()
+            .any(|r| r.name == "libbaz" && r.version == "3.1-2+deb13u1" && r.arch == "amd64")
+    );
     assert!(rows.iter().any(|r| r.name == "seconly" && r.arch == "all"));
 
     // The archive provides the installed foo and debonly/secman/shared, but
@@ -456,9 +457,10 @@ fn candidate_version_is_never_used_for_installed_queries() {
     let sel = catalog.resolve(DEBIAN).unwrap();
     let rows = query::installed(&scan, &catalog, RepoFilter::Selected(&sel), installed_all());
     assert_eq!(rows.len(), 5);
-    assert!(rows
-        .iter()
-        .any(|r| r.name == "foo" && r.arch == "amd64" && r.version == "2.0-1"));
+    assert!(
+        rows.iter()
+            .any(|r| r.name == "foo" && r.arch == "amd64" && r.version == "2.0-1")
+    );
     assert!(rows.iter().all(|r| r.name != "libbaz"));
 }
 
@@ -536,15 +538,18 @@ fn package_queries_cover_all_architectures() {
     // Unqualified name: every architecture.
     let rows = query::package_versions(&scan, &catalog, "foo", filter_none()).unwrap();
     assert_eq!(rows.len(), 3);
-    assert!(rows
-        .iter()
-        .any(|r| r.arch == "amd64" && r.version == "2.0-1" && r.installed));
-    assert!(rows
-        .iter()
-        .any(|r| r.arch == "i386" && r.version == "2.0-1" && r.installed));
-    assert!(rows
-        .iter()
-        .any(|r| r.arch == "amd64" && r.version == "2.0-1+deb13u1" && !r.installed));
+    assert!(
+        rows.iter()
+            .any(|r| r.arch == "amd64" && r.version == "2.0-1" && r.installed)
+    );
+    assert!(
+        rows.iter()
+            .any(|r| r.arch == "i386" && r.version == "2.0-1" && r.installed)
+    );
+    assert!(
+        rows.iter()
+            .any(|r| r.arch == "amd64" && r.version == "2.0-1+deb13u1" && !r.installed)
+    );
 
     // Qualified name restricts to that architecture.
     let rows = query::package_versions(&scan, &catalog, "foo:i386", filter_none()).unwrap();
@@ -779,9 +784,11 @@ fn cli_repos_and_installed_and_repo_filtering() {
         serde_json::from_str(&stdout).unwrap_or_else(|e| panic!("invalid JSON: {e}\n{stdout}"));
     let packages = value["packages"].as_array().expect("packages envelope");
     assert_eq!(packages.len(), 3);
-    assert!(packages
-        .iter()
-        .all(|p| p.get("installed").is_some() && p.get("repositories").is_some()));
+    assert!(
+        packages
+            .iter()
+            .all(|p| p.get("installed").is_some() && p.get("repositories").is_some())
+    );
 
     // JSON modes parse as JSON.
     for args in [

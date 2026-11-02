@@ -188,10 +188,11 @@ where
 {
     let mut out = Vec::new();
     for idx in indexes {
-        if let Some(v) = get(idx) {
-            if !out.contains(&v) {
-                out.push(v);
-            }
+        let Some(v) = get(idx) else {
+            continue;
+        };
+        if !out.contains(&v) {
+            out.push(v);
         }
     }
     out
@@ -199,11 +200,7 @@ where
 
 /// The header argument for [`table`]: the header row, or `None` to omit it.
 fn header_if<'a>(headers: &'a [&'a str], show: bool) -> Option<&'a [&'a str]> {
-    if show {
-        Some(headers)
-    } else {
-        None
-    }
+    if show { Some(headers) } else { None }
 }
 
 fn join_or_dash(values: &[String]) -> String {

@@ -171,10 +171,11 @@ fn first(indexes: &[RepoIndex], get: impl Fn(&RepoIndex) -> Option<String>) -> O
 fn distinct(indexes: &[RepoIndex], get: impl Fn(&RepoIndex) -> Option<String>) -> Vec<String> {
     let mut out = Vec::new();
     for i in indexes {
-        if let Some(v) = get(i) {
-            if !out.contains(&v) {
-                out.push(v);
-            }
+        let Some(v) = get(i) else {
+            continue;
+        };
+        if !out.contains(&v) {
+            out.push(v);
         }
     }
     out

@@ -1,7 +1,7 @@
 //! User-facing repository selector resolution (`--repo`).
 
 use crate::error::AptListsError;
-use crate::repository::{normalize_uri, strip_scheme, RepoCatalog, Repository};
+use crate::repository::{RepoCatalog, Repository, normalize_uri, strip_scheme};
 
 /// A successfully resolved `--repo` selector: exactly one repository plus the
 /// set of index ids that belong to it.
