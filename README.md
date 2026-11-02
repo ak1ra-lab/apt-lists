@@ -19,7 +19,7 @@ lists, installs or removes packages, and never modifies APT configuration or
 the dpkg database. It only reads the state that `libapt-pkg` already has.
 
 A full annotated transcript is available in
-[`docs/example-output.md`](docs/example-output.md).
+[`docs/example-output.md`](https://github.com/ak1ra-lab/apt-lists/blob/master/docs/example-output.md).
 
 ## Provenance semantics (read this first)
 
@@ -116,6 +116,16 @@ outcomes are distinguishable:
 1. repository matched, packages matched → results
 2. repository matched, no installed packages match → empty output, exit 0
 3. selector matched no repository → explicit error, exit 1
+
+## Installing
+
+```console
+cargo install apt-lists
+```
+
+The crate is published as [`apt-lists`](https://crates.io/crates/apt-lists).
+It links against `libapt-pkg`, so `libapt-pkg-dev` and a C++ toolchain must be
+installed; see [Requirements](#requirements).
 
 ## Usage
 
@@ -228,8 +238,8 @@ exposes.
 * Debian (or derivative) with `dpkg`; not portable to non-dpkg distributions.
 * `libapt-pkg` ≥ 6.0 (Debian 12+). Primary target: Debian 13 / APT 3.x /
   `libapt-pkg.so.7.0` (developed and tested against apt 3.0.3).
-* Build: Rust 1.85+ and `libapt-pkg-dev` (for the headers).
-* `oma-apt` 0.13 is the APT interface — there is no second package-index
+* Build: Rust 1.88+ and `libapt-pkg-dev` (for the headers).
+* `oma-apt` 0.14 is the APT interface — there is no second package-index
   parser in this codebase.
 
 ## Building
@@ -278,9 +288,9 @@ The repository enforces a strict style/safety gate locally and in CI
   sanctioned exception is one `unsafe { env::set_var }` call in the test
   fixture (setting `APT_CONFIG` before libapt initializes; commented in
   place).
-* CI (`.github/workflows/ci.yaml`, GitHub Actions-compatible syntax for
-  Forgejo/Gitea Actions) runs fmt, clippy and the test suite on every push
-  and pull request.
+* CI (`.github/workflows/ci.yaml`, GitHub Actions) runs fmt, clippy, the test
+  suite and `cargo package` on every push and pull request. Dependabot keeps
+  Cargo and Actions dependencies current.
 
 ## Testing
 
@@ -302,7 +312,16 @@ binary.
 just test    # or: cargo test
 ```
 
+## Releasing
+
+Releases are tag-driven (`vX.Y.Z`). See
+[RELEASING.md](https://github.com/ak1ra-lab/apt-lists/blob/master/RELEASING.md):
+the `release` workflow verifies the tag against `Cargo.toml`, reuses the `ci`
+workflow, and publishes the source package to crates.io via Trusted
+Publishing. No binary artifacts or GitHub Release are produced.
+
 ## License
 
-GPL-3.0-or-later, see [LICENSE](LICENSE). The `oma-apt` dependency uses the
-same license.
+GPL-3.0-or-later, see
+[LICENSE](https://github.com/ak1ra-lab/apt-lists/blob/master/LICENSE). The
+`oma-apt` dependency uses the same license.

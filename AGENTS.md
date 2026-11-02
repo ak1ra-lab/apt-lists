@@ -7,11 +7,11 @@ See README.md for provenance semantics and examples.
 
 ## Commands
 
-- `just check` - full CI gate: fmt-check + clippy + tests. Run before finishing.
+- `just check` - full local gate: fmt-check + clippy + tests. Run before finishing.
 - `cargo test --test fixture <name>` - run one integration test; tests live in
   tests/fixture.rs (unit tests: `cargo test --lib`).
 - `just lint`, `just fmt`, `just build`, `just completion <shell>`.
-- Build requires `libapt-pkg-dev` (oma-apt links libapt-pkg) and Rust 1.85+.
+- Build requires `libapt-pkg-dev` (oma-apt links libapt-pkg) and Rust 1.88+.
 
 ## Lints and style gates
 
@@ -27,6 +27,15 @@ See README.md for provenance semantics and examples.
   the first libapt cache init. Do not add `unsafe` elsewhere; stdout handling
   must stay panic-free without it.
 - Commit messages: Conventional Commits, lowercase, imperative, <= 50 chars.
+
+## Release
+
+- Tags are `vX.Y.Z` and must match `Cargo.toml`. The tag-triggered
+  `.github/workflows/release.yaml` reuses the `ci` workflow, then publishes
+  the source package to crates.io via Trusted Publishing. No binary artifacts
+  or GitHub Release are produced. See RELEASING.md.
+- Never add a long-lived crates.io token to the repository; the release
+  workflow uses GitHub OIDC. The first version must be published manually.
 
 ## Architecture
 
