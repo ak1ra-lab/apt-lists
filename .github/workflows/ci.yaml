@@ -1,9 +1,5 @@
-# CI for Forgejo / Gitea Actions (GitHub Actions compatible syntax).
-#
-# Enforces the repository's code-style and safety gates:
-#   * rustfmt (no diff allowed)
-#   * clippy with the [lints] configured in Cargo.toml, warnings as errors
-#   * the full test suite (isolated APT fixtures, no host state touched)
+# CI for the GitHub repository. The trixie container matches the primary
+# Debian 13 / APT 3.x target; `vars.CI_RUNNER` allows a Forgejo runner label.
 
 name: ci
 
@@ -11,22 +7,40 @@ on:
   push:
     branches: [master]
   pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
 
 jobs:
   check:
-    runs-on: docker
+    name: fmt + clippy + test + package
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 30
     container:
       image: rust:1-trixie
     steps:
-      - name: Install apt build dependencies
+      - name: Check out sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install build dependencies
         run: |
           apt-get update
           apt-get install -y --no-install-recommends libapt-pkg-dev
-      - name: Check out sources
-        uses: actions/checkout@v7
+          rustup component add rustfmt clippy
       - name: rustfmt
         run: cargo fmt --check
       - name: clippy
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --all-targets --locked -- -D warnings
       - name: tests
-        run: cargo test
+        run: cargo test --locked
+      - name: package
+        run: cargo package --locked

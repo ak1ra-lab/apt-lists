@@ -3,14 +3,14 @@
 # Requires `just` (https://github.com/casey/just) and a Debian system with
 # libapt-pkg-dev installed.
 
-# Fail on any rustfmt/clippy difference; CI runs the same commands.
+# Fail on any rustfmt/clippy difference; CI runs the same checks.
 flag_strict := if env_var_or_default("CI", "") != "" { "--" } else { "" }
 
 # show available recipes
 default:
     @just --list --unsorted
 
-# fmt + clippy + test: everything CI enforces.
+# fmt + clippy + test: the local gate (CI also checks packaging).
 check: fmt-check lint test
 
 # Format all code.

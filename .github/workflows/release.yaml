@@ -1,0 +1,79 @@
+# Publish a vX.Y.Z tag to crates.io after the reusable ci workflow passes.
+# First-time setup and release steps: RELEASING.md.
+
+name: release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    name: ci
+    uses: ./.github/workflows/ci.yaml # zizmor: ignore[self-repository] actionlint lacks $/ support
+
+  publish:
+    name: publish ${{ github.ref_name }}
+    needs: ci
+    if: github.server_url == 'https://github.com'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+    container:
+      image: rust:1-trixie
+    steps:
+      - name: Check out sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Resolve version
+        id: version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if ! printf '%s\n' "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::release tag must look like vX.Y.Z, got '$TAG'"
+            exit 1
+          fi
+          version="${TAG#v}"
+          manifest="$(cargo metadata --no-deps --format-version 1 \
+            | grep -o '"version":"[^"]*"' | head -n1 | cut -d'"' -f4)"
+          if [ "$version" != "$manifest" ]; then
+            echo "::error::tag $TAG does not match Cargo.toml version $manifest"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Check crates.io
+        id: published
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          code="$(curl -sS -o /dev/null -w '%{http_code}' \
+            -A 'apt-lists-release-workflow' \
+            "https://crates.io/api/v1/crates/apt-lists/${VERSION}")"
+          case "$code" in
+            200) echo "already=true" >> "$GITHUB_OUTPUT" ;;
+            404) echo "already=false" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error::crates.io returned HTTP $code"; exit 1 ;;
+          esac
+      - name: Authenticate with crates.io
+        if: steps.published.outputs.already == 'false'
+        id: auth
+        uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1.0.6
+      - name: Publish to crates.io
+        if: steps.published.outputs.already == 'false'
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+        run: cargo publish --locked --no-verify
