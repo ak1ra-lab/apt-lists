@@ -1,7 +1,12 @@
 # Example output
 
-The following transcript was generated with a synthetic fixture resembling a
-Debian 13 system with official repositories configured:
+This is the reference transcript for `apt-lists`, not a tutorial: it records
+the exact output (including error messages and exit codes) produced by the
+synthetic fixture used in the test suite. Regenerate it by driving that
+fixture (`tests/fixture.rs`) when the output format changes.
+
+The fixture resembles a Debian 13 system with official repositories
+configured:
 
 ```text
 https://deb.debian.org/debian            trixie           (also mirrored at ftp.us.debian.org/debian)

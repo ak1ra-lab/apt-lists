@@ -3,7 +3,7 @@
 Read-only, repository-aware companion to `apt list`: a single Rust crate
 (`apt-lists`) that answers "which installed package versions are currently
 provided by a specific APT repository?" via `oma-apt` (libapt-pkg bindings).
-See README.md for provenance semantics and examples.
+See README.md for an overview and docs/ for details.
 
 ## Commands
 
@@ -69,8 +69,8 @@ See README.md for provenance semantics and examples.
   they panic on EPIPE. Closed pipes exit quietly with 141
   (`AptListsError::Output` + `ErrorKind::BrokenPipe`).
 - serde_json has no `preserve_order`: object keys print alphabetically, so
-  example transcripts in README.md and docs/example-output.md show sorted
-  keys.
+  example transcripts in docs/output.md and docs/example-output.md show
+  sorted keys.
 
 ## Testing
 
