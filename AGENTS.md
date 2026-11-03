@@ -5,6 +5,14 @@ Read-only, repository-aware companion to `apt list`: a single Rust crate
 provided by a specific APT repository?" via `oma-apt` (libapt-pkg bindings).
 See README.md for an overview and docs/ for details.
 
+## Documentation layout
+
+- README.md is the short user entry point: why, install, usage, docs index.
+- docs/ holds the details: provenance/matching, repository identity and
+  selectors, output formats, example output, design/dev, releasing. docs/ is
+  excluded from the crates.io package; README links to it with absolute
+  GitHub URLs because crates.io does not resolve relative links.
+
 ## Commands
 
 - `just check` - full local gate: fmt-check + clippy + tests. Run before finishing.

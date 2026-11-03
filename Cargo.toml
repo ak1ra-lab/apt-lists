@@ -10,7 +10,7 @@ documentation = "https://docs.rs/apt-lists"
 readme = "README.md"
 keywords = ["apt", "debian", "dpkg", "packages", "cli"]
 categories = ["command-line-utilities", "os"]
-exclude = ["/.github", "/.agents", "/AGENTS.md", "/justfile", "/RELEASING.md"]
+exclude = ["/.github", "/.agents", "/AGENTS.md", "/justfile", "/docs"]
 
 [dependencies]
 oma-apt = "0.14.0"
