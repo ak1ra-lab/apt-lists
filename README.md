@@ -332,7 +332,7 @@ just test    # or: cargo test
 ## Releasing
 
 Releases are tag-driven (`vX.Y.Z`). See
-[RELEASING.md](https://github.com/ak1ra-lab/apt-lists/blob/master/RELEASING.md):
+[docs/releasing.md](https://github.com/ak1ra-lab/apt-lists/blob/master/docs/releasing.md):
 the `release` workflow verifies the tag against `Cargo.toml`, reuses the `ci`
 workflow, and publishes the source package to crates.io via Trusted
 Publishing. No binary artifacts or GitHub Release are produced.

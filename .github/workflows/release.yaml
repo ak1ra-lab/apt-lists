@@ -1,5 +1,5 @@
 # Publish a vX.Y.Z tag to crates.io after the reusable ci workflow passes.
-# First-time setup and release steps: RELEASING.md.
+# First-time setup and release steps: docs/releasing.md.
 
 name: release
 

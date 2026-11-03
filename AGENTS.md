@@ -33,7 +33,7 @@ See README.md for provenance semantics and examples.
 - Tags are `vX.Y.Z` and must match `Cargo.toml`. The tag-triggered
   `.github/workflows/release.yaml` reuses the `ci` workflow, then publishes
   the source package to crates.io via Trusted Publishing. No binary artifacts
-  or GitHub Release are produced. See RELEASING.md.
+  or GitHub Release are produced. See docs/releasing.md.
 - Never add a long-lived crates.io token to the repository; the release
   workflow uses GitHub OIDC. The first version must be published manually.
 
